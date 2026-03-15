@@ -6,7 +6,9 @@ interface SidebarProps {
   activeSessionId: string | null;
   workingDirectory: string;
   autoApprove: boolean;
+  hasActiveSkill: boolean;
   onNewChat: () => void;
+  onNewSkill: () => void;
   onSelectSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
   onDirectoryChange: (dir: string) => void;
@@ -23,7 +25,9 @@ export function Sidebar({
   activeSessionId,
   workingDirectory,
   autoApprove,
+  hasActiveSkill,
   onNewChat,
+  onNewSkill,
   onSelectSession,
   onDeleteSession,
   onDirectoryChange,
@@ -82,6 +86,9 @@ export function Sidebar({
         <div className="sidebar-header">
           <button className="new-chat-btn" onClick={onNewChat}>
             + New Chat
+          </button>
+          <button className="new-skill-btn" onClick={onNewSkill}>
+            ⚡ New Skill
           </button>
         </div>
 

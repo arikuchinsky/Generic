@@ -27,3 +27,47 @@ export interface Settings {
   workingDirectory: string;
   autoApprove: boolean;
 }
+
+// ── Skill types ────────────────────────────────────────────
+
+export interface Skill {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  stages: string[];
+}
+
+export interface SkillResponse {
+  type: "question" | "info" | "action" | "complete" | "revision_approval" | "error";
+  content: string;
+  confidence: number; // 1-4
+  options: string[];
+  stage: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface SkillSessionState {
+  id: string;
+  skillId: string;
+  currentStage: string;
+  stages: string[];
+  messages: SkillMessage[];
+  isProcessing: boolean;
+  context: {
+    approvedCount: number;
+    pendingCount: number;
+    revisionIndex: number;
+  };
+}
+
+export interface SkillMessage {
+  id: string;
+  role: "user" | "skill";
+  content: string;
+  confidence?: number;
+  type?: string;
+  options?: string[];
+  metadata?: Record<string, unknown>;
+  timestamp: number;
+}

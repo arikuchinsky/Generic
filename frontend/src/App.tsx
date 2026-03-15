@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { Session, Settings } from "./types";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { useSkillSession } from "./hooks/useSkillSession";
 import { Sidebar } from "./components/Sidebar";
 import { ChatArea } from "./components/ChatArea";
 import { InputArea } from "./components/InputArea";
+import { SkillLauncher } from "./components/SkillLauncher";
+import { SkillFlow } from "./components/SkillFlow";
 
 export default function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [showSkillLauncher, setShowSkillLauncher] = useState(false);
   const [settings, setSettings] = useState<Settings>({
     model: "sonnet",
     workingDirectory: "",
@@ -18,22 +22,32 @@ export default function App() {
     useWebSocket({
       sessionId: activeSessionId,
       onSessionUpdate: (claudeSessionId) => {
-        // Store Claude's internal session ID for resume support
         console.log("Claude session:", claudeSessionId);
       },
     });
 
-  // Fetch sessions on mount
+  const {
+    skillSession,
+    availableSkills,
+    fetchSkills,
+    startSkill,
+    sendSkillMessage,
+    uploadFile,
+    closeSkill,
+    downloadFile,
+  } = useSkillSession();
+
+  // Fetch sessions and skills on mount
   useEffect(() => {
     fetchSessions();
-  }, []);
+    fetchSkills();
+  }, [fetchSkills]);
 
   const fetchSessions = async () => {
     try {
       const res = await fetch("/api/sessions");
       const data = await res.json();
       setSessions(data);
-      // Set initial working directory from first session or default
       if (data.length > 0 && !settings.workingDirectory) {
         setSettings((s) => ({
           ...s,
@@ -46,6 +60,8 @@ export default function App() {
   };
 
   const handleNewChat = useCallback(async () => {
+    // Close any active skill
+    closeSkill();
     try {
       const res = await fetch(
         `/api/sessions?working_directory=${encodeURIComponent(settings.workingDirectory)}`,
@@ -61,16 +77,31 @@ export default function App() {
     } catch {
       // ignore
     }
-  }, [settings.workingDirectory, clearMessages]);
+  }, [settings.workingDirectory, clearMessages, closeSkill]);
+
+  const handleNewSkill = useCallback(() => {
+    setShowSkillLauncher(true);
+  }, []);
+
+  const handleSelectSkill = useCallback(
+    (skillId: string) => {
+      setShowSkillLauncher(false);
+      setActiveSessionId(null);
+      clearMessages();
+      startSkill(skillId);
+    },
+    [clearMessages, startSkill]
+  );
 
   const handleSelectSession = useCallback(
     (id: string) => {
       if (id !== activeSessionId) {
+        closeSkill();
         clearMessages();
         setActiveSessionId(id);
       }
     },
-    [activeSessionId, clearMessages]
+    [activeSessionId, clearMessages, closeSkill]
   );
 
   const handleDeleteSession = useCallback(
@@ -91,7 +122,6 @@ export default function App() {
 
   const handleSend = useCallback(
     (content: string) => {
-      // Auto-create session if none active
       if (!activeSessionId) {
         fetch(
           `/api/sessions?working_directory=${encodeURIComponent(settings.workingDirectory)}`,
@@ -109,7 +139,6 @@ export default function App() {
               ...prev,
             ]);
             setActiveSessionId(data.id);
-            // Wait for WebSocket to connect, then send
             setTimeout(() => {
               sendMessage(
                 content,
@@ -128,7 +157,6 @@ export default function App() {
         settings.autoApprove
       );
 
-      // Update session title if first message
       const session = sessions.find((s) => s.id === activeSessionId);
       if (session && session.title === "New Chat") {
         setSessions((prev) =>
@@ -154,7 +182,9 @@ export default function App() {
         activeSessionId={activeSessionId}
         workingDirectory={settings.workingDirectory}
         autoApprove={settings.autoApprove}
+        hasActiveSkill={!!skillSession}
         onNewChat={handleNewChat}
+        onNewSkill={handleNewSkill}
         onSelectSession={handleSelectSession}
         onDeleteSession={handleDeleteSession}
         onDirectoryChange={(dir) =>
@@ -164,19 +194,39 @@ export default function App() {
           setSettings((s) => ({ ...s, autoApprove: val }))
         }
       />
-      <div className="main-area">
-        <ChatArea messages={messages} isStreaming={isStreaming} />
-        <InputArea
-          onSend={handleSend}
-          onCancel={cancel}
-          isStreaming={isStreaming}
-          isConnected={isConnected}
-          model={settings.model}
-          onModelChange={(model) =>
-            setSettings((s) => ({ ...s, model }))
-          }
+
+      {/* Skill flow takes over the main area when active */}
+      {skillSession ? (
+        <SkillFlow
+          session={skillSession}
+          onSendMessage={sendSkillMessage}
+          onUploadFile={uploadFile}
+          onClose={closeSkill}
+          onDownload={downloadFile}
         />
-      </div>
+      ) : (
+        <div className="main-area">
+          <ChatArea messages={messages} isStreaming={isStreaming} />
+          <InputArea
+            onSend={handleSend}
+            onCancel={cancel}
+            isStreaming={isStreaming}
+            isConnected={isConnected}
+            model={settings.model}
+            onModelChange={(model) =>
+              setSettings((s) => ({ ...s, model }))
+            }
+          />
+        </div>
+      )}
+
+      {showSkillLauncher && (
+        <SkillLauncher
+          skills={availableSkills}
+          onSelectSkill={handleSelectSkill}
+          onClose={() => setShowSkillLauncher(false)}
+        />
+      )}
     </div>
   );
 }

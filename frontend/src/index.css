@@ -830,3 +830,362 @@ body {
   color: var(--error);
   background: rgba(204, 85, 68, 0.1);
 }
+
+/* New Skill button */
+.new-skill-btn {
+  width: 100%;
+  padding: 8px 16px;
+  margin-top: 8px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.new-skill-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+/* Skill launcher modal */
+.skill-launcher-modal {
+  width: 560px;
+}
+
+.skill-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.skill-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid var(--border);
+}
+
+.skill-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+}
+
+.skill-card-icon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.skill-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.skill-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.skill-card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Skill flow */
+.skill-flow {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.skill-flow-header {
+  padding: 16px 24px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.skill-flow-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.skill-flow-title h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.skill-flow-close {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 20px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.skill-flow-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.skill-flow-stats {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.stat-badge {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.stat-badge.approved {
+  background: rgba(68, 170, 153, 0.15);
+  color: var(--success);
+}
+
+.stat-badge.pending {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* Stage progress bar */
+.stage-progress {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.stage-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.stage-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.stage-item.done .stage-dot {
+  background: var(--success);
+  color: #fff;
+}
+
+.stage-item.active .stage-dot {
+  background: var(--accent);
+  color: #fff;
+}
+
+.stage-item.pending .stage-dot {
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
+}
+
+.stage-label {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.stage-item.done .stage-label {
+  color: var(--success);
+}
+
+.stage-item.active .stage-label {
+  color: var(--accent);
+}
+
+.stage-item.pending .stage-label {
+  color: var(--text-tertiary);
+}
+
+.stage-connector {
+  width: 16px;
+  height: 1px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Confidence badges */
+.confidence-badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+.confidence-1 {
+  background: rgba(68, 170, 153, 0.15);
+  color: var(--success);
+}
+
+.confidence-2 {
+  background: rgba(68, 136, 204, 0.15);
+  color: #4488cc;
+}
+
+.confidence-3 {
+  background: rgba(212, 160, 77, 0.15);
+  color: var(--warning);
+}
+
+.confidence-4 {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* Skill message */
+.skill-message-header {
+  margin-bottom: 8px;
+}
+
+.revision-message {
+  border-left: 3px solid var(--accent);
+  padding-left: 12px;
+}
+
+/* Skill option buttons */
+.skill-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.skill-option-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  transition: all 0.15s;
+}
+
+.skill-option-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Skill download buttons */
+.skill-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.skill-download-btn {
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.skill-download-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* File upload zone */
+.file-upload {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.file-upload:hover,
+.file-upload.dragging {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.file-upload.uploading {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.file-upload.uploaded {
+  border-style: solid;
+  border-color: var(--success);
+  background: rgba(68, 170, 153, 0.08);
+  cursor: default;
+  flex-direction: row;
+  justify-content: center;
+  padding: 12px;
+}
+
+.file-upload-icon {
+  font-size: 28px;
+}
+
+.file-upload.uploaded .file-upload-icon {
+  font-size: 18px;
+  color: var(--success);
+}
+
+.file-upload-label {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.file-upload-name {
+  font-size: 14px;
+  color: var(--success);
+  font-weight: 500;
+}
+
+.file-upload-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
