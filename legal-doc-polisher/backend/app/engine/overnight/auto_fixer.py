@@ -321,15 +321,17 @@ def _apply_threshold_adjustment(patch: CodePatch, config_path: Path) -> None:
 
     if item_category == "A":
         current = rules.get("heading_style", {}).get("majority_threshold", 0.75)
-        # For regressions, increase threshold (be more conservative)
-        # For fails, decrease threshold (catch more deviations)
         if is_regression:
             new_val = min(current + 0.05, 0.90)
         else:
             new_val = max(current - 0.05, 0.50)
-        rules.setdefault("heading_style", {})["majority_threshold"] = round(new_val, 2)
-        patch.before_value = str(current)
-        patch.after_value = str(round(new_val, 2))
+        new_val = round(new_val, 2)
+        if new_val == round(current, 2):
+            logger.debug(f"  Threshold already at limit ({new_val}), skipping")
+            return
+        rules.setdefault("heading_style", {})["majority_threshold"] = new_val
+        patch.before_value = str(round(current, 2))
+        patch.after_value = str(new_val)
 
     elif item_category == "B":
         current = rules.get("paragraph_format", {}).get("majority_threshold", 0.80)
@@ -337,9 +339,13 @@ def _apply_threshold_adjustment(patch: CodePatch, config_path: Path) -> None:
             new_val = min(current + 0.05, 0.95)
         else:
             new_val = max(current - 0.05, 0.55)
-        rules.setdefault("paragraph_format", {})["majority_threshold"] = round(new_val, 2)
-        patch.before_value = str(current)
-        patch.after_value = str(round(new_val, 2))
+        new_val = round(new_val, 2)
+        if new_val == round(current, 2):
+            logger.debug(f"  Threshold already at limit ({new_val}), skipping")
+            return
+        rules.setdefault("paragraph_format", {})["majority_threshold"] = new_val
+        patch.before_value = str(round(current, 2))
+        patch.after_value = str(new_val)
 
     config["rules"] = rules
     with open(config_path, "w") as f:
@@ -361,7 +367,11 @@ def _apply_tolerance_adjustment(patch: CodePatch, config_path: Path) -> None:
     # Tighten spacing tolerance
     current = rules.get("paragraph_format", {}).get("tolerance", {}).get("spacing_pt", 1.0)
     new_val = max(current - 0.25, 0.25)
-    rules.setdefault("paragraph_format", {}).setdefault("tolerance", {})["spacing_pt"] = round(new_val, 2)
+    new_val = round(new_val, 2)
+    if new_val == round(current, 2):
+        logger.debug(f"  Tolerance already at limit ({new_val}), skipping")
+        return
+    rules.setdefault("paragraph_format", {}).setdefault("tolerance", {})["spacing_pt"] = new_val
 
     patch.before_value = str(current)
     patch.after_value = str(round(new_val, 2))

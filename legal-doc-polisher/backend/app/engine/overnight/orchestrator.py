@@ -31,18 +31,14 @@ from typing import Any
 from ...config import settings
 from ...models.enums import DocumentType, FocusArea
 from ...models.schemas import Example, PrePolishOptions
-from ..edgar_sampler import (
-    CRE_SEARCH_TERMS,
-    EDGAR_HEADERS,
-    convert_to_test_docx,
-    download_chunk_documents,
-)
 from ..orchestrator import polish_document
 from ..profiler import build_style_profile
 from ..validator import validate_polish
 from ..vision.renderer import render_to_images
 from .auto_fixer import CodePatch, FixSession, apply_fixes, generate_fixes
+from .real_doc_downloader import download_and_supplement
 from .vision_reviewer import DocumentReviewResult, review_before_after
+from .xml_reviewer import review_before_after_xml
 
 logger = logging.getLogger(__name__)
 
@@ -174,14 +170,23 @@ async def run_overnight_pipeline(
     accumulated_examples: list[Example] = []
     all_patches: list[CodePatch] = []
     completed_doc_paths: list[Path] = []  # For regression testing
-    docs_per_chunk = 10
-    num_chunks = total_docs // docs_per_chunk
     current_hour = 0
-    last_hourly_time = pipeline_start
 
-    import httpx
+    # --- Phase 1: Download all documents ---
+    logger.info(f"\n{'='*60}")
+    logger.info(f"PHASE 1: Downloading documents (real + synthetic)...")
+    logger.info(f"{'='*60}")
 
-    for chunk_num in range(1, num_chunks + 1):
+    docs_dir = output_dir / "documents"
+    all_doc_files = await download_and_supplement(docs_dir, target_count=total_docs)
+    logger.info(f"  Total documents prepared: {len(all_doc_files)}")
+
+    # --- Phase 2: Process each document through the review cycle ---
+    logger.info(f"\n{'='*60}")
+    logger.info(f"PHASE 2: Processing {len(all_doc_files)} documents...")
+    logger.info(f"{'='*60}")
+
+    for doc_idx, (docx_path, source_url) in enumerate(all_doc_files):
         if time.time() >= deadline:
             logger.info("Time limit reached — stopping pipeline")
             break
@@ -199,97 +204,60 @@ async def run_overnight_pipeline(
             logger.info(f"HOURLY UPDATE (Hour {current_hour}): {hourly.message}")
             logger.info(f"{'*'*50}\n")
 
-        # --- Download chunk ---
-        chunk_dir = output_dir / f"chunk_{chunk_num:02d}"
-        raw_dir = chunk_dir / "downloads"
-        docx_dir = chunk_dir / "docx"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-        docx_dir.mkdir(parents=True, exist_ok=True)
+        doc_num = doc_idx + 1
+        doc_id = f"doc_{doc_num:03d}"
 
-        terms_start = (chunk_num - 1) * 3
-        chunk_terms = CRE_SEARCH_TERMS[terms_start:terms_start + 3]
-        if not chunk_terms:
-            chunk_terms = CRE_SEARCH_TERMS[:3]
+        logger.info(f"\n  --- Document {doc_num}/{len(all_doc_files)}: {docx_path.name} ---")
 
-        logger.info(f"\n{'='*60}")
-        logger.info(f"CHUNK {chunk_num}/{num_chunks} — Downloading documents...")
-        logger.info(f"{'='*60}")
+        doc_dir = output_dir / "processing" / doc_id
+        doc_result = await _process_document_cycle(
+            docx_path=docx_path,
+            doc_id=doc_id,
+            source_url=source_url,
+            doc_dir=doc_dir,
+            accumulated_examples=accumulated_examples,
+            all_patches=all_patches,
+            completed_doc_paths=completed_doc_paths,
+        )
 
-        async with httpx.AsyncClient(headers=EDGAR_HEADERS, timeout=30.0) as client:
-            downloads = await download_chunk_documents(
-                client, chunk_num, chunk_terms, raw_dir, docs_per_chunk
-            )
+        result.documents.append(doc_result)
+        completed_doc_paths.append(docx_path)
 
-        # Convert to docx
-        docx_files = []
-        for raw_path, source_url in downloads:
-            try:
-                docx_path = docx_dir / (raw_path.stem + ".docx")
-                convert_to_test_docx(raw_path, docx_path)
-                docx_files.append((docx_path, source_url))
-            except Exception as e:
-                logger.debug(f"Conversion failed: {e}")
+        # Update totals
+        if doc_result.status == "success":
+            result.total_successful += 1
+        elif doc_result.status == "partial":
+            result.total_partial += 1
+        else:
+            result.total_failed += 1
+        result.total_docs += 1
+        result.total_patches_applied += doc_result.total_fixes_applied
+        result.total_regressions_found += doc_result.regressions_found
 
-        logger.info(f"  Prepared {len(docx_files)} documents for testing")
+        # Track improvement
+        result.improvement_trajectory.append({
+            "doc_num": doc_num,
+            "pass_rate": doc_result.final_pass_rate,
+            "patches_total": len(all_patches),
+            "cumulative_pass_rate": _calc_cumulative_pass_rate(result.documents),
+        })
 
-        # --- Process each document through the review cycle ---
-        for doc_idx, (docx_path, source_url) in enumerate(docx_files):
-            if time.time() >= deadline:
-                break
+        # Generate per-document learning
+        if doc_result.final_pass_rate > 0:
+            for patch_info in doc_result.patches_applied:
+                accumulated_examples.append(Example(
+                    category=patch_info.get("trigger_item_id", "")[:1].lower(),
+                    description=f"[Overnight fix] {patch_info.get('change_description', '')}",
+                    document_type="contract",
+                ))
 
-            doc_num = (chunk_num - 1) * docs_per_chunk + doc_idx + 1
-            doc_id = f"doc_{doc_num:03d}"
-
-            logger.info(f"\n  --- Document {doc_num}/{total_docs}: {docx_path.name} ---")
-
-            doc_result = await _process_document_cycle(
-                docx_path=docx_path,
-                doc_id=doc_id,
-                source_url=source_url,
-                doc_dir=chunk_dir / doc_id,
-                accumulated_examples=accumulated_examples,
-                all_patches=all_patches,
-                completed_doc_paths=completed_doc_paths,
-            )
-
-            result.documents.append(doc_result)
-            completed_doc_paths.append(docx_path)
-
-            # Update totals
-            if doc_result.status == "success":
-                result.total_successful += 1
-            elif doc_result.status == "partial":
-                result.total_partial += 1
-            else:
-                result.total_failed += 1
-            result.total_docs += 1
-            result.total_patches_applied += doc_result.total_fixes_applied
-            result.total_regressions_found += doc_result.regressions_found
-
-            # Track improvement
-            result.improvement_trajectory.append({
-                "doc_num": doc_num,
-                "pass_rate": doc_result.final_pass_rate,
-                "patches_total": len(all_patches),
-                "cumulative_pass_rate": _calc_cumulative_pass_rate(result.documents),
-            })
-
-            # Generate per-document learning
-            if doc_result.final_pass_rate > 0:
-                for patch_info in doc_result.patches_applied:
-                    accumulated_examples.append(Example(
-                        category=patch_info.get("trigger_item_id", "")[:1].lower(),
-                        description=f"[Overnight fix] {patch_info.get('change_description', '')}",
-                        document_type="contract",
-                    ))
-
-            logger.info(
-                f"  Document {doc_num} complete: "
-                f"pass_rate={doc_result.final_pass_rate:.1f}%, "
-                f"fixes={doc_result.total_fixes_applied}, "
-                f"attempts={doc_result.attempts}, "
-                f"status={doc_result.status}"
-            )
+        logger.info(
+            f"  Document {doc_num} complete: "
+            f"pass_rate={doc_result.final_pass_rate:.1f}%, "
+            f"fixes={doc_result.total_fixes_applied}, "
+            f"attempts={doc_result.attempts}, "
+            f"status={doc_result.status}"
+        )
 
     # --- Final summary ---
     result.end_time = datetime.now().isoformat()
@@ -416,9 +384,39 @@ async def _process_document_cycle(
                     # Done — either all passing or out of retries
                     break
             else:
-                # No images available — skip vision review, use validation only
-                cycle.final_pass_rate = 100.0 if validation.is_valid else 50.0
-                break
+                # No images available — use XML-level review instead
+                review = review_before_after_xml(
+                    original_path=docx_path,
+                    polished_path=polished_path,
+                    document_id=doc_id,
+                    filename=docx_path.name,
+                )
+                cycle.review_results.append({
+                    "attempt": attempt,
+                    "pass_rate": review.pass_rate,
+                    "improvement_score": review.improvement_score,
+                    "total_pass": review.total_pass,
+                    "total_fail": review.total_fail,
+                    "total_regression": review.total_regression,
+                    "summary": review.summary,
+                })
+                cycle.final_pass_rate = review.pass_rate
+                cycle.final_improvement_score = review.improvement_score
+                cycle.regressions_found = review.total_regression
+
+                logger.info(f"    XML review: {review.summary}")
+
+                # If there are actionable fixes and more retries available
+                if review.actionable_fixes and attempt < MAX_RETRIES_PER_DOC:
+                    fix_session = generate_fixes(review.actionable_fixes, doc_id, attempt)
+                    fix_session = apply_fixes(fix_session)
+                    cycle.total_fixes_applied += fix_session.total_applied
+                    all_patches.extend(fix_session.patches)
+                    cycle.patches_applied.extend([asdict(p) for p in fix_session.patches if p.applied])
+                    logger.info(f"    Applied {fix_session.total_applied} patches — retrying")
+                    continue
+                else:
+                    break
 
         except Exception as e:
             logger.warning(f"    Attempt {attempt} failed: {e}")

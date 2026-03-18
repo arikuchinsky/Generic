@@ -55,10 +55,13 @@ def resolve_font_property(run: Run, prop: str) -> Any:
     style = run.style if run.style else None
     if style is None:
         # Fall back to paragraph style
-        para = run._element.getparent()
-        if para is not None:
-            para_obj = Paragraph(para, None)
-            style = para_obj.style
+        try:
+            para = run._element.getparent()
+            if para is not None:
+                para_obj = Paragraph(para, run._element.getparent().getparent())
+                style = para_obj.style
+        except (AttributeError, TypeError):
+            style = None
 
     while style is not None:
         font = style.font

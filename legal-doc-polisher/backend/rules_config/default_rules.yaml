@@ -1,54 +1,46 @@
-version: 1
-
 rules:
-  heading_style:
-    enabled: true
-    majority_threshold: 0.75
-    properties_to_check:
-      - bold
-      - underline
-      - font_name
-      - font_size
-      - alignment
-    skip_levels: []
-
-  quote_style:
-    enabled: true
-    target: smart
-    patterns:
-      straight_single: "'"
-      straight_double: '"'
-      smart_single_open: "\u2018"
-      smart_single_close: "\u2019"
-      smart_double_open: "\u201C"
-      smart_double_close: "\u201D"
-
-  list_labels:
-    enabled: true
-    check_sequence: true
-    check_format_consistency: true
-    check_nesting: true
-
-  paragraph_format:
-    enabled: true
-    majority_threshold: 0.80
-    properties_to_check:
-      - alignment
-      - line_spacing
-      - space_before
-      - space_after
-      - first_line_indent
-    tolerance:
-      spacing_pt: 1.0
-
   cross_references:
     enabled: true
-
   definition_format:
     enabled: true
-
-  signature_block:
-    enabled: true
-
   header_footer:
     enabled: true
+  heading_style:
+    enabled: true
+    majority_threshold: 0.5
+    properties_to_check:
+    - bold
+    - underline
+    - font_name
+    - font_size
+    - alignment
+    skip_levels: []
+  list_labels:
+    check_format_consistency: true
+    check_nesting: true
+    check_sequence: true
+    enabled: true
+  paragraph_format:
+    enabled: true
+    majority_threshold: 0.55
+    properties_to_check:
+    - alignment
+    - line_spacing
+    - space_before
+    - space_after
+    - first_line_indent
+    tolerance:
+      spacing_pt: 1.0
+  quote_style:
+    enabled: true
+    patterns:
+      smart_double_close: "\u201D"
+      smart_double_open: "\u201C"
+      smart_single_close: "\u2019"
+      smart_single_open: "\u2018"
+      straight_double: '"'
+      straight_single: ''''
+    target: smart
+  signature_block:
+    enabled: true
+version: 1
