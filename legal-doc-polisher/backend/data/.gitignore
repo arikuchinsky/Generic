@@ -1,0 +1,9 @@
+# Ignore pipeline-generated artifacts (binary docx files, downloaded docs, etc.)
+# Keep only the overnight report markdown/json files
+jobs/
+overnight_smoke/
+overnight_run/documents/
+overnight_run/processing/
+overnight_run/hourly_update_*.json
+overnight_test/
+examples.db
