@@ -20,32 +20,59 @@ anchors into edit operations, and returns a Word `.docx` file with native
 
 A single `.docx` file containing **Word-native track changes**
 (`w:ins` / `w:del` revisions authored as "Legal Assistant"), built by applying
-the anchor-driven instructions on top of the **modified** document so the user
-can accept/reject each change in Word.
+the anchor-driven instructions **on top of the Modified document**, preserving
+its existing formatting (styles, fonts, numbering, tables, headers/footers).
+Each anchor becomes a tracked revision so the user can accept/reject in Word.
+
+**Base document is locked to Modified.docx.** The Original is used only as a
+*source of truth* for `INS` operations (so we can pull the exact original
+phrasing back in) and as a sanity check on alignment.
 
 ---
 
-## Anchor Grammar (handwritten / typed on the PDF in PDF Expert)
+## PDF Expert Markup Rules (strict — typed annotations only)
 
-Anchors are short tokens placed in PDF Expert annotations (text notes,
-callouts, or stamps) directly adjacent to the affected text in the redline.
+To make parsing reliable, the app supports a **fixed set of typed annotations**
+only. Freehand drawing, highlights without notes, and ad-hoc shapes are
+ignored. If you follow these rules, the app can handle the markup
+deterministically.
 
-| Anchor | Meaning | Operand |
-|--------|---------|---------|
-| `INS` | Re-insert / restore a provision that the redline removed | The struck-through text the anchor points to (or quoted text in the note) |
-| `DEL` | Delete the adjacent text | The underlined/inserted or existing text the anchor points to |
-| `KEEP` | Accept the redline change as-is (no further edit) | Nearest revision |
-| `REJ` | Reject the redline change (revert to original) | Nearest revision |
-| `REPL: "<new text>"` | Replace adjacent text with the quoted text | Adjacent run + new text from note |
-| `MOVE → §X.Y` | Move the adjacent block to the cited section | Adjacent block + target heading |
-| `CMT: "<note>"` | Attach a Word comment, no text change | Anchor location |
+### Required annotation type
+Use **PDF Expert's "Note" / "Text Comment" annotation** (the speech-bubble
+icon) anchored next to the text you want to act on. The note's *body text*
+must start with one of the commands below.
 
-Conventions:
-- Anchors are case-insensitive but stored uppercase internally.
-- The note's *anchor point* in the PDF (its `/Rect` or popup target) identifies
-  the location; the note's text body carries the operand.
-- Free-hand strikethrough/underline drawn in PDF Expert is also parsed as
-  `DEL` / `INS` respectively.
+### Command syntax (always uppercase command, then a colon, then args)
+
+| Command | Body text the user types | Effect on Modified.docx |
+|---------|--------------------------|-------------------------|
+| `INS` | `INS: "<exact text from Original>"` | Insert that text at the anchor point as a tracked insertion |
+| `DEL` | `DEL: "<text to remove>"` | Delete that text at the anchor point as a tracked deletion |
+| `REPL` | `REPL: "<old text>" -> "<new text>"` | Tracked delete of `<old>` + tracked insert of `<new>` |
+| `KEEP` | `KEEP` (no args) | Accept the nearest redline change in the Modified doc as-is (no edit emitted) |
+| `REJ` | `REJ` (no args) | Reject the nearest redline change — emit edits that restore the Original wording |
+| `CMT` | `CMT: "<note text>"` | Attach a Word comment at the anchor point; no text change |
+
+### Placement rules
+1. **One command per note.** Don't combine.
+2. **Anchor the note next to the affected text** in the redline PDF — within
+   the same line if possible. The note's coordinates locate the edit; the
+   quoted text disambiguates within that paragraph.
+3. **Quoted text must match the redline verbatim** (copy-paste from the PDF
+   when possible). Whitespace and punctuation matter; case does not.
+4. For `INS`, the quoted text must match a span found in the Original document
+   (this is how the app pulls formatting and exact wording back in).
+5. For ambiguous matches (same phrase appears multiple times in the
+   paragraph), add a short context prefix:
+   `DEL: "...prior 5 words... <text to remove>"`.
+
+### What the app ignores
+- Freehand strikethrough, underline, highlight, shapes, stamps
+- Notes whose body doesn't start with a known command
+- Notes on pages that are not part of the redline content (e.g. cover pages)
+
+Unrecognized notes are surfaced in the results UI as "skipped — unknown
+command" so nothing is silently dropped.
 
 ---
 
@@ -74,16 +101,21 @@ Chrome ──HTTP──▶ Flask (app.py)
 1. **Upload** — user posts the three files; server stores them in a per-session
    temp dir.
 2. **Anchor extraction** — `pdf_anchors.py` walks every page, pulls each
-   annotation's `/Contents`, `/Rect`, `/Subtype`, popup target, and the text
-   under the rect.
-3. **Parse** — `anchor_parser.py` converts each annotation into an
-   `EditOp(kind, target_text, new_text?, location_hint)`.
-4. **Align** — `doc_aligner.py` locates `target_text` inside the **Modified**
-   `.docx` (paragraph + run indices) using exact match, then fuzzy fallback.
-5. **Apply** — `redline_writer.py` writes the change as an OOXML revision so
-   Word renders it as a native track-change authored by "Legal Assistant".
-6. **Download** — Flask serves the resulting `.docx`; a small results page
-   lists every applied op and any that failed to align.
+   `/Text` annotation's `/Contents`, `/Rect`, page number, and the text under
+   the rect (for context). Non-Text annotations are ignored.
+3. **Parse** — `anchor_parser.py` matches the body against the strict command
+   regex set and returns typed `EditOp(kind, target_text, new_text?,
+   location_hint)`. Unknown bodies become `SkippedOp(reason)`.
+4. **Align on Modified.docx** — `doc_aligner.py` builds an index of
+   `(para_idx, run_idx, text)` for the **Modified** doc and locates
+   `target_text` by exact match first, then fuzzy fallback constrained to the
+   paragraph nearest the PDF anchor's page/coordinates.
+5. **Apply preserving formatting** — `redline_writer.py` splits the target run
+   so adjacent formatting (bold, italic, font, style) is preserved on both
+   sides of the edit, then injects `w:ins` / `w:del` (and `w:comment` for
+   `CMT`) authored as "Legal Assistant".
+6. **Download** — Flask serves the resulting `.docx`; the results page lists
+   applied, skipped, and unmatched ops.
 
 ---
 
@@ -97,30 +129,37 @@ Chrome ──HTTP──▶ Flask (app.py)
 
 ---
 
-## Risks / Open Questions
+## Decisions locked
 
-- **PDF Expert annotation fidelity** — confirm that text notes, freehand
-  strikethrough, and stamps all serialize as standard PDF annotations
-  (`/Text`, `/StrikeOut`, `/Stamp`) readable by PyMuPDF. If freehand isn't
-  reliable, require typed `INS`/`DEL` notes only.
-- **Original vs. Modified as base** — plan applies edits on top of Modified.
-  Confirm with user; alternative is to re-derive a clean diff from
-  Original→Modified first, then layer anchor edits.
+- **Base document = Modified.docx.** All edits are tracked changes layered on
+  top of it; the Modified doc's formatting is preserved verbatim.
+- **PDF Expert markup = typed Note annotations only**, following the strict
+  command grammar above. Freehand strokes and unrecognized notes are ignored
+  (and surfaced as "skipped" in the results UI).
+
+## Remaining risks
+
 - **Word track-changes authoring** — python-docx has no first-class API; we
-  must inject `w:ins`/`w:del` elements directly. Worth a spike before full
-  build.
-- **Ambiguous targets** — if anchor text appears multiple times, fall back to
-  PDF page/coordinate proximity, then surface as "needs review" in the UI.
+  must inject `w:ins`/`w:del` elements directly. Spike in Phase 0 before the
+  full build.
+- **Ambiguous targets** — if quoted text appears multiple times in the
+  paragraph nearest the PDF anchor, fall back to PDF page/coordinate
+  proximity, then surface as "needs review" in the UI so the user can add a
+  context prefix and re-run.
+- **Run splitting** — to preserve formatting, the writer must split docx runs
+  cleanly at the edit boundary; covered in the Phase 0 spike.
 
 ---
 
 ## Build Checklist
 
 ### Phase 0 — Spikes (de-risk)
-- [ ] Confirm PyMuPDF reads PDF Expert annotations end-to-end on a sample file
-- [ ] Spike: write a `w:ins` + `w:del` revision into a `.docx` and verify Word
-      shows native track changes
-- [ ] Decide base document for edits (Modified vs. derived diff) with user
+- [ ] Confirm PyMuPDF reads PDF Expert `/Text` Note annotations end-to-end on
+      a sample file (body text + rect + page)
+- [ ] Spike: split a docx run, write `w:ins` + `w:del` into the gap, verify
+      Word shows native track changes and surrounding formatting is preserved
+- [x] Base document decision: **Modified.docx** (locked)
+- [x] Markup scope decision: **typed Note annotations, strict grammar** (locked)
 
 ### Phase 1 — Project skeleton
 - [ ] `app.py` Flask entry, `127.0.0.1:5000`
@@ -142,22 +181,31 @@ Chrome ──HTTP──▶ Flask (app.py)
 - [ ] Unit tests with a fixture PDF
 
 ### Phase 4 — Anchor grammar parser
-- [ ] `services/anchor_parser.py` tokenizes `INS | DEL | KEEP | REJ | REPL: "..."
-      | MOVE → §X.Y | CMT: "..."`
-- [ ] Returns typed `EditOp` objects (pydantic)
-- [ ] Friendly errors for malformed anchors
+- [ ] `services/anchor_parser.py` matches the strict command set:
+      `INS:"..."`, `DEL:"..."`, `REPL:"..." -> "..."`, `KEEP`, `REJ`,
+      `CMT:"..."`
+- [ ] Returns typed `EditOp` objects (pydantic); unknown bodies become
+      `SkippedOp(reason)` and flow through to the results UI
+- [ ] Unit tests covering each command, malformed quotes, and unknown bodies
 
 ### Phase 5 — Alignment to Modified.docx
-- [ ] `services/doc_aligner.py` builds a flat `(para_idx, run_idx, text)` index
-- [ ] Exact-match lookup for `target_text`
-- [ ] `rapidfuzz` fallback above a threshold; ambiguity → "needs review"
+- [ ] `services/doc_aligner.py` builds a flat `(para_idx, run_idx, text)`
+      index over the Modified doc
+- [ ] Exact-match lookup for quoted `target_text`
+- [ ] `rapidfuzz` fallback above a threshold, scoped to the paragraph nearest
+      the PDF anchor's page+coords; ambiguity → "needs review"
+- [ ] For `INS`, also locate the quoted text in the Original doc to copy
+      exact wording (and optionally inherit run formatting from Original)
 
 ### Phase 6 — Track-changes writer
 - [ ] `services/redline_writer.py` injects `w:ins` / `w:del` with
       `w:author="Legal Assistant"` and current `w:date`
-- [ ] Implements: insert, delete, replace (= del + ins), comment
-      (`w:commentRangeStart` / `w:commentRangeEnd` / `w:commentReference`)
-- [ ] Preserves run formatting at the edit site
+- [ ] Implements: `INS`, `DEL`, `REPL` (= del + ins), `KEEP` (no-op),
+      `REJ` (restore from Original), `CMT`
+      (`w:commentRangeStart` / `w:commentRangeEnd` / `w:commentReference`
+      + `comments.xml` part)
+- [ ] **Run-splitting** preserves Modified.docx run formatting on both sides
+      of every edit (bold, italic, font, color, style)
 
 ### Phase 7 — Results UI + download
 - [ ] `routes/download.py` streams the generated `.docx`
